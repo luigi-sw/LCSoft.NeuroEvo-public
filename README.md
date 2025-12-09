@@ -290,12 +290,3 @@ If you use this project in research, please cite:
 - **Discussions**: [GitHub Discussions](https://github.com/luigi-sw/LCSoft.NeuroEvo-public/discussions)
 - **Documentation**: [Full Docs](src/docs/)
 
----
-
-## Acknowledgments
-
-- PyTorch team for extensibility framework
-- Xilinx for FPGA tools
-- Open-source RISC-V community for inspiration on custom hardware
-
-
