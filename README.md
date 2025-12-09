@@ -34,7 +34,7 @@ sudo cp libhal.so /usr/local/lib/ && sudo ldconfig
 
 # 2. Build & load kernel driver
 make && sudo insmod ai_driver.ko
-sudo chmod 666 /dev/ai_accelerator
+sudo chmod 666 /dev/neuroevo
 
 # 3. Install PyTorch extension
 cd ../pytorch && python setup.py install
@@ -103,64 +103,7 @@ output = opt_model(input)  # Auto-offload to FPGA
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      PyTorch Model                          │
-└────────────────────┬────────────────────────────────────────┘
-                     │ torch.compile(backend='NeuroEvo')
-┌────────────────────▼────────────────────────────────────────┐
-│              Dynamo Backend (Python)                        │
-│  - Graph capture via FX                                     │
-│  - Operator fusion (Linear+GELU)                            │
-│  - Shape inference                                          │
-└────────────────────┬────────────────────────────────────────┘
-                     │ ai_accelerator_ops.linear()
-┌────────────────────▼────────────────────────────────────────┐
-│        Accelerator Ops (C++ PyTorch Extension)              │
-│  - Data marshaling                                          │
-│  - Type conversion (FP32 → FP8/INT16)                       │
-└────────────────────┬────────────────────────────────────────┘
-                     │ hal_device_submit()
-┌────────────────────▼────────────────────────────────────────┐
-│           HAL - Hardware Abstraction Layer (C)              │
-│  - Buffer allocation                                        │
-│  - Command buffer building                                  │
-│  - Device management                                        │
-└────────────────────┬────────────────────────────────────────┘
-                     │ ioctl(AI_IOC_SUBMIT_JOB)
-┌────────────────────▼────────────────────────────────────────┐
-│         Kernel Driver (ai_driver.c)                         │
-│  - PCIe device binding                                      │
-│  - BAR0/BAR2 mapping                                        │
-│  - Job scheduler (kernel thread)                            │
-│  - Interrupt handling (MSI)                                 │
-└────────────────────┬────────────────────────────────────────┘
-                     │ PCIe TLPs
-┌────────────────────▼────────────────────────────────────────┐
-│              Hardware (FPGA RTL)                            │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │ PCIe Controller → BAR0 (Registers) / BAR2 (DDR)      │  │
-│  └──────────┬───────────────────────────────────────────┘  │
-│             │                                                │
-│  ┌──────────▼───────────────────────────────────────────┐  │
-│  │ Instruction Decoder → DMA Engine → AI Core           │  │
-│  │                                                       │  │
-│  │  AI Core:                                             │  │
-│  │  ├─ 32x32 Systolic Array                             │  │
-│  │  ├─ 32 SRAM Banks (local memory)                     │  │
-│  │  ├─ Vector Processor (activations)                   │  │
-│  │  └─ Post-Process Unit (fusion)                       │  │
-│  └──────────┬───────────────────────────────────────────┘  │
-│             │                                                │
-│  ┌──────────▼───────────────────────────────────────────┐  │
-│  │ Memory Interconnect (striping logic)                 │  │
-│  └──────────┬───────────────────────────────────────────┘  │
-│             │                                                │
-│  ┌──────────▼───────────────────────────────────────────┐  │
-│  │ 4x DDR/GDDR6 Controllers (200 GB/s total)            │  │
-│  └──────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-```
+- [Architecture](src/docs/PROJECT_ARCHITECTURE.md)
 
 ---
 
@@ -168,57 +111,63 @@ output = opt_model(input)  # Auto-offload to FPGA
 
 ### Getting Started
 - [Build Instructions](BUILD_INSTRUCTIONS.md) - Step-by-step build guide
-- [Project Overview](docs/PROJECT_OVERVIEW.md) - High-level project description
-- [Quick Tutorial](docs/TUTORIAL.md) - 10-minute walkthrough
+- [Project Overview](src/docs/PROJECT_OVERVIEW.md) - High-level project description
+- [Quick Tutorial](src/docs/TUTORIAL.md) - 10-minute walkthrough
 
 ### Architecture
-- [Hardware Architecture](docs/HARDWARE_ARCHITECTURE.md) - RTL design deep-dive
-- [Software Architecture](docs/SOFTWARE_ARCHITECTURE.md) - Driver & stack design
-- [Memory System](docs/MEMORY_SYSTEM.md) - DDR controllers & NUMA
+- [Hardware Architecture](src/docs/HARDWARE_ARCHITECTURE.md) - RTL design deep-dive
+- [Software Architecture](src/docs/SOFTWARE_ARCHITECTURE.md) - Driver & stack design
+- [Memory System](src/docs/MEMORY_SYSTEM.md) - DDR controllers & NUMA
 
 ### Component Details
-- [RTL Design Guide](docs/RTL_DESIGN.md) - Verilog modules explained
-- [Driver Guide](docs/DRIVER_GUIDE.md) - Kernel driver internals
-- [HAL API Reference](docs/HAL_API.md) - C API documentation
-- [PyTorch Integration](docs/PYTORCH_INTEGRATION.md) - Backend implementation
-- [MLIR Compiler](docs/MLIR_COMPILER.md) - Optimization passes
+- [RTL Design Guide](src/docs/RTL_DESIGN.md) - Verilog modules explained
+- [Driver Guide](src/docs/DRIVER_GUIDE.md) - Kernel driver internals
+- [HAL API Reference](src/docs/HAL_API.md) - C API documentation
+- [PyTorch Integration](src/docs/PYTORCH_INTEGRATION.md) - Backend implementation
+- [MLIR Compiler](src/docs/MLIR_COMPILER.md) - Optimization passes
 
 ### Performance & Tuning
-- [Performance Analysis](docs/PERFORMANCE.md) - Benchmarks & bottlenecks
-- [Auto-Tuning Guide](docs/AUTO_TUNING.md) - Tile size optimization
-- [Distributed Execution](docs/DISTRIBUTED.md) - Multi-FPGA setup
+- [Performance Analysis](src/docs/PERFORMANCE.md) - Benchmarks & bottlenecks
+- [Auto-Tuning Guide](src/docs/AUTO_TUNING.md) - Tile size optimization
+- [Distributed Execution](src/docs/DISTRIBUTED.md) - Multi-FPGA setup
 
 ---
 
 ## Project Structure
 
 ```
-10-IAHW/
-├── rtl/                    # RTL Design (Verilog)
-│   ├── core/              # AI Core (systolic array, PE, vector proc)
-│   ├── control/           # Control logic (decoder, DMA, FIFOs)
-│   ├── memory/            # Memory subsystem (DDR ctrl, interconnect)
-│   ├── interfaces/        # PCIe, chip-link
-│   └── top/               # Top-level integration
-├── driver/                # Linux Kernel Driver & HAL
-│   ├── ai_driver.c        # Kernel module (scheduler, IRQ)
-│   ├── hal.c              # Hardware Abstraction Layer
-│   └── ai_driver_windows.c # Windows WDM driver
-├── pytorch/               # PyTorch Integration
-│   ├── accelerator_ops.cpp # C++ extension (uses HAL)
-│   ├── dynamo_backend.py  # torch.compile() backend
-│   └── accelerator.py     # AcceleratorLinear layer
-├── tools/                 # Compilers & Utilities
-│   ├── compiler.py        # Instruction compiler
-│   └── mlir_compiler.py   # MLIR-style optimizer
-├── loaders/               # Model File Loaders
-│   ├── safetensors_loader.cpp
-│   ├── gguf_loader.cpp    # Quantization transcoding
-│   └── py_bindings.cpp    # Python bindings
-├── runtime/               # Distributed Runtime
-│   └── distributed.py     # Multi-FPGA orchestration
-├── tb/                    # Testbenches (Verilog)
-└── docs/                  # Documentation
+rtl/
+  core/            # AI Core (systolic array, PE, vector proc)
+  control/         # Control logic (decoder, DMA, FIFOs)
+  memory/          # Memory subsystem (DDR ctrl, interconnect)
+  interfaces/      # PCIe, chip-link
+  top/             # Top-level integration
+
+driver/
+  ai_driver.c          # Kernel module (scheduler, IRQ)
+  hal.c                # Hardware Abstraction Layer
+  ai_driver_windows.c  # Windows WDM driver
+
+pytorch/
+  accelerator_ops.cpp  # C++ extension (uses HAL)
+  dynamo_backend.py    # torch.compile() backend
+  accelerator.py       # AcceleratorLinear layer
+
+tools/
+  compiler.py          # Instruction compiler
+  mlir_compiler.py     # MLIR-style optimizer
+
+loaders/
+  safetensors_loader.cpp
+  gguf_loader.cpp      # Quantization transcoding
+  py_bindings.cpp      # Python bindings
+
+runtime/
+  distributed.py       # Multi-FPGA orchestration
+
+tb/                    # Testbenches (Verilog)
+
+docs/                  # Documentation
 ```
 
 ---
@@ -339,7 +288,7 @@ If you use this project in research, please cite:
 
 - **Issues**: [GitHub Issues](https://github.com/luigi-sw/LCSoft.NeuroEvo-public/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/luigi-sw/LCSoft.NeuroEvo-public/discussions)
-- **Documentation**: [Full Docs](docs/)
+- **Documentation**: [Full Docs](src/docs/)
 
 ---
 
@@ -348,4 +297,5 @@ If you use this project in research, please cite:
 - PyTorch team for extensibility framework
 - Xilinx for FPGA tools
 - Open-source RISC-V community for inspiration on custom hardware
+
 
