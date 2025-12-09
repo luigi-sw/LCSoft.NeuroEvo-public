@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: 📚 Documentation
-    url: https://github.com/luigicfilho/<Project>/discussions
+    url: https://github.com/luigi-sw/LCSoft.NeuroEvo-public/discussions
     about: This issue tracker is not for documentation issues. Please file documentation issues on the Ionic Docs repo.
-  - name: 💻 <Project> Support
-    url: https://github.com/luigicfilho/<Project>/discussions
+  - name: 💻 LCSoft.NeuroEvo Support
+    url: https://github.com/luigi-sw/LCSoft.NeuroEvo-public/discussions
     about: Please ask and answer questions here.
